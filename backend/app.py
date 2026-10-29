@@ -38,6 +38,12 @@ async def lifespan(app: FastAPI):
         S["engine"].embed_text("warmup")
     S["dres"] = DresClient.from_env(log_path=SUBMIT_LOG)
     print(f"engine ready in {time.time() - t:.1f}s: {len(S['engine'].shots)} shots")
+    if S["dres"].base_url and S["dres"].username:
+        try:  # log in up front so the operator does not have to; the UI can retry
+            S["dres"].login()
+            print("DRES login ok")
+        except Exception as ex:
+            print(f"DRES login failed (retry from the UI): {ex}")
     yield
 
 
