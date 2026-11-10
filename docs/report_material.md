@@ -78,15 +78,61 @@ No external API is called at query time. Everything runs locally.
 
 ### Index sizes and build times (full corpus)
 
-_To be filled after the full build (see `index/build_log.jsonl`)._
+Corpus: 1,000 videos, **141,156 shots** (18 zero-length), 94,134 shots with speech (57,015 Whisper segments after filtering).
+Machine: Apple M5 Pro, 48 GB RAM, PyTorch MPS.
+
+| Artifact | Size | Build time |
+|---|---|---|
+| `shots.parquet` + `videos.parquet` | 4.2 MB + 0.5 MB | 5.6 s (incremental), thumbnail extraction included |
+| Extracted thumbnails (`index/thumbs`) | 5.6 GB (141,156 PNGs) | (part of build_shots) |
+| SigLIP image embeddings (`img_emb.f16.npy`, 141,156 × 1152, fp16) | 310 MB | 20–25 img/s, i.e. **≈ 1.6–2.0 h** for the whole corpus |
+| BM25 shot transcripts / video metadata | 11.2 MB / 0.8 MB (vocab 32,722 / 18,109) | 1.8 s |
+| FAISS `IndexFlatIP` (reference) | 620 MB | 0.15 s |
+| Backend startup (load all + SigLIP) | 1.46 GB RSS | 8–13 s |
+
+Raw corpus on disk: 29 GB `videos_480p`, 5.6 GB thumbnail zips, 158 MB Whisper SRT/VTT/TXT.
+
+Note on embedding time: the build ran in three batches (20 videos at 20.0 img/s, then 718 videos, then 262 videos at 24.6 img/s).
+The middle batch's logged wall time (50,180 s) is not representative: the laptop slept for hours
+during it (lid closed on battery). The throughput figure (20–25 img/s, MPS fp16) is the
+reproducible number. In fp32 the same model ran at 8.4 img/s.
 
 ### Query latency (`scripts/benchmark.py`)
 
-_To be filled after the full build._
+200 queries per mode over HTTP on localhost, k = 200, full index (141,156 shots). *Server* time = in-process
+time (X-Search-Ms header). *Client* time includes HTTP and JSON serialisation.
+
+| Mode | client p50 | client p95 | server p50 | server p95 (ms) |
+|---|---|---|---|---|
+| visual (SigLIP text → exact IP) | 21.3 | 23.0 | 20.6 | 22.2 |
+| speech (BM25) | 4.5 | 5.0 | 4.0 | 4.4 |
+| fused (RRF) | 22.1 | 23.4 | 21.3 | 22.6 |
+| fused, grouped by video | 22.4 | 24.7 | 21.6 | 23.7 |
+| image (pasted screenshot) | 58.3 | 60.6 | 55.7 | 57.5 |
+| more-like-this | 9.9 | 10.8 | 9.3 | 9.8 |
+| temporal A→B | 51.6 | 53.3 | 50.8 | 52.4 |
+| relevance feedback (Rocchio) | 10.0 | 10.6 | 9.3 | 9.8 |
+
+Backend resident memory: **1,455 MB**. Every mode answers in under 61 ms at p95, so query time is
+negligible compared with the time the operator spends inspecting results.
 
 ### Mock-KIS selftest (`scripts/selftest.py`)
 
-_To be filled after the full build._
+200 random target shots (seed 42), full index. Rank of the target among 141,156 shots (depth 1000).
+- **frame** is a frame grabbed from the 480p video at the shot midpoint, cropped 5%, resized to 640 px and JPEG q = 60. It mimics a KIS-V screenshot.
+- **speech/fused** use 8 consecutive words of the shot's own transcript. Only 90 of the 200 targets have ≥ 8 words.
+
+| Query | n | exact R@1 | R@10 | R@100 | MRR | ±1 shot R@10 | right video R@1 | video R@10 |
+|---|---|---|---|---|---|---|---|---|
+| thumbnail itself (sanity) | 200 | 0.995 | 1.000 | 1.000 | 0.998 | 1.000 | 1.000 | 1.000 |
+| video frame (KIS-V proxy) | 200 | 0.635 | 0.875 | 0.960 | 0.723 | 0.915 | 0.940 | 0.980 |
+| transcript words, speech mode | 90 | 0.267 | 0.689 | 0.944 | 0.418 | 0.756 | 0.944 | 0.956 |
+| transcript words, fused mode | 90 | 0.067 | 0.578 | 0.900 | 0.225 | 0.689 | 0.422 | 0.933 |
+
+Observations:
+- **Image search.** A screenshot-like frame finds the right video first 94% of the time and the exact shot in the top 10 in 87.5% of cases. Most misses are adjacent shots of the same scene (±1-shot R@10 = 0.915), which the player's shot strip makes easy to correct. Going from the 20-video development set to the full 1,000 videos lowered exact R@1 only from 0.69 to 0.635.
+- **Speech search** finds the right video at R@1 = 0.944. The exact shot is harder (R@1 = 0.267), because neighbouring shots share text through the ±1 window and long segments span several shots.
+- **Equal-weight RRF fusion hurts spoken-word queries** (video R@1 0.42 vs 0.94 for speech-only). The visual ranking is uninformative for such queries but carries the same weight. In the UI the operator therefore chooses Speech mode for quoted speech.
 
 ## 4. Known limitations
 

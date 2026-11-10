@@ -101,7 +101,9 @@ def main():
         page.keyboard.press("Escape")
         page.keyboard.press("t")
         expect(page.locator(".task-head")).to_contain_text("AVS task")
-        page.fill(".qform input", "paraglider flying over mountains")
+        # speech mode on words unique to one video's title -> top results all from 00057
+        page.keyboard.press("2")
+        page.fill(".qform input", "Grente Zwillinge")
         page.keyboard.press("Enter")
         expect(page.locator(".status")).to_contain_text("results", timeout=10000)
         page.keyboard.press("Escape")
