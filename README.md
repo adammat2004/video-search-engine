@@ -6,18 +6,42 @@ Search Technologies, Assignment 2.
 - `backend/`: FastAPI search + media + DRES proxy
 - `frontend/`: React + Vite UI
 - `scripts/`: benchmarks and evaluation helpers
+- `docs/report_material.md`: pipeline, external resources, numbers and limitations for the report
 
 ## Setup
 
-    uv venv --python 3.11 .venv && uv pip install --python .venv/bin/python -r requirements.txt
+Keep this repository **private**. The handout forbids sharing the collection or the system outside the group.
+
+Prerequisites: an Apple-silicon Mac (SigLIP runs on the MPS GPU; CPU works but embedding is far slower),
+[uv](https://docs.astral.sh/uv/), Node 20+, Google Chrome, ffmpeg. You also need about 45 GB of free disk.
+
     brew install ffmpeg
-    python3 ../student_download.py --packages metadata,msb,thumbnails,videos_480p --dest data/assignment2_data
-    # Whisper transcripts: https://zenodo.org/records/7383303 (V3C1.zip) -> data/whisper/
-    cp .env.example .env   # fill in DRES credentials
+    uv python install 3.11
+    uv venv --python 3.11 .venv && uv pip install --python .venv/bin/python -r requirements.txt
+    (cd frontend && npm ci)
+
+Data goes in `data/`, which is gitignored and never committed.
+
+    # student_download.py ships with the assignment handout (it is not in this repo)
+    python3 /path/to/student_download.py --packages metadata,msb,thumbnails,videos_480p --dest data/assignment2_data
+    # Whisper transcripts (CC-BY-4.0): https://zenodo.org/records/7383303 -> V3C1.zip
+    mkdir -p data/whisper && unzip -q V3C1.zip -d data/whisper      # gives data/whisper/V3C1/<v3cId>.srt
+
+DRES credentials are per person. Put your own login in `.env`, which is gitignored and never committed:
+
+    cp .env.example .env    # DRES_URL=https://csc1103.interactivevideoretrieval.com, DRES_USER=<your DCU email>, DRES_PASS=...
+
+`MEDIA_NAME_FMT={v3c_id}` (e.g. `00031`) is confirmed correct against the course server.
 
 ## Build the index
 
     indexer/run_all.sh            # idempotent; re-run after downloading more videos
+
+This takes about 2 h for the full corpus, almost all of it SigLIP embedding (20–25 img/s on an M-series GPU).
+Keep the Mac plugged in with the lid open: sleep pauses it. It resumes where it stopped.
+
+**Shortcut:** copy a teammate's `index/` folder (about 7 GB; `index/thumbs` is most of it) into the repo
+instead. The backend then starts immediately. You still need `data/` for video playback.
 
 ## Run
 
