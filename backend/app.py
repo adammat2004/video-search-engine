@@ -27,7 +27,7 @@ load_dotenv(config.ROOT / ".env")
 S: dict = {}                     # app state: engine, dres client
 LOCK = threading.Lock()          # one search at a time (MPS model + numpy buffers are shared)
 LATENCY_LOG = config.LOGS / "latency.jsonl"
-SUBMIT_LOG = config.LOGS / "submissions.jsonl"
+SUBMIT_LOG = Path(os.getenv("VBS_SUBMIT_LOG", config.LOGS / "submissions.jsonl"))  # override for test stacks
 
 
 @asynccontextmanager
@@ -290,6 +290,10 @@ def dres_status():
             out.update(evaluations=len(evs), active=[{"id": e["id"], "name": e["name"]} for e in active])
             if len(active) == 1:
                 out["current_task"] = d.current_task(active[0]["id"])
+                st = d.state(active[0]["id"])
+                if st:
+                    out["task"] = {"id": st.get("taskId"), "status": st.get("taskStatus"),
+                                   "time_left_ms": st.get("timeLeft")}
         except Exception as ex:
             out["error"] = str(ex)
     return out

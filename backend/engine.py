@@ -106,11 +106,28 @@ class Engine:
     def speech(self, q: str, k=200):
         return self._top(self.speech_scores(q), k, positive_only=True)
 
+    @staticmethod
+    def speech_weight(speech_scores: np.ndarray) -> float:
+        """RRF weight of the speech ranking, from how much the best BM25 match stands out.
+
+        Spoken-word queries tend to have one standout match (top-50 score far below top-1); visual
+        descriptions match many shots weakly. Confidence 1 - s50/s1 is mapped linearly from
+        SPEECH_CONF_LO..LO+SPAN to weight 1..SPEECH_WEIGHT_MAX.
+        """
+        top = np.partition(speech_scores, len(speech_scores) - 50)[-50:]
+        s1, s50 = top.max(), top.min()
+        conf = 0.0 if s1 <= 0 else 1 - s50 / s1
+        t = np.clip((conf - config.SPEECH_CONF_LO) / config.SPEECH_CONF_SPAN, 0, 1)
+        return float(1 + (config.SPEECH_WEIGHT_MAX - 1) * t)
+
     def fused(self, q: str, k=200):
-        """Reciprocal rank fusion of the visual and speech rankings."""
+        """Weighted reciprocal rank fusion of the visual and speech rankings (speech weight adapts to the query)."""
+        s = self.speech_scores(q)
         rrf = np.zeros(len(self.shots), dtype=np.float32)
-        for rows, _ in (self.visual(q, config.FUSION_DEPTH), self.speech(q, config.FUSION_DEPTH)):
-            rrf[rows] += 1.0 / (config.RRF_K + np.arange(1, len(rows) + 1))
+        vis, _ = self.visual(q, config.FUSION_DEPTH)
+        sp, _ = self._top(s, config.FUSION_DEPTH, positive_only=True)
+        for rows, w in ((vis, 1.0), (sp, self.speech_weight(s))):
+            rrf[rows] += w / (config.RRF_K + np.arange(1, len(rows) + 1))
         return self._top(rrf, k, positive_only=True)
 
     def image(self, img, k=200):

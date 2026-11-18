@@ -1,18 +1,27 @@
 """End-to-end UI check in the locally installed Google Chrome (Playwright, channel="chrome").
 
-Needs: backend on :8000 with .env pointing at scripts/fake_dres.py on :8081 (target 00031:3586-8008),
-and the Vite dev server on :5173. Exercises: text search, keyboard navigation, HEVC playback +
-seek + loop, KIS submit (WRONG then CORRECT via pasted image), AVS queue + crowding warning.
+Needs a backend connected to scripts/fake_dres.py (target 00031:3586-8008) and a Vite dev server.
+Exercises: countdown, text search, keyboard navigation, HEVC playback + seek + loop, KIS submit (WRONG
+then CORRECT via pasted image), AVS queue + crowding warning, auto-reset when the DRES task changes.
 
 Usage: .venv/bin/python scripts/ui_e2e.py [--headed]
+A separate test stack (so the real backend stays on the course DRES):
+  .venv/bin/uvicorn scripts.fake_dres:app --port 8081
+  DRES_URL=http://127.0.0.1:8081 DRES_USER=team DRES_PASS=secret VBS_SUBMIT_LOG=logs/submissions_test.jsonl \
+      .venv/bin/uvicorn backend.app:app --port 8001
+  (cd frontend && VBS_BACKEND=http://127.0.0.1:8001 npx vite --port 5174)
+  VBS_UI_URL=http://localhost:5174 .venv/bin/python scripts/ui_e2e.py
 """
+import os
+import re
 import sys
 import time
 from pathlib import Path
 
+import httpx
 from playwright.sync_api import expect, sync_playwright
 
-URL = "http://localhost:5173"
+URL = os.getenv("VBS_UI_URL", "http://localhost:5173")
 OUT = Path(__file__).resolve().parent.parent / "index" / "samples"
 
 
@@ -38,7 +47,6 @@ check.failed = False
 def main():
     headed = "--headed" in sys.argv
     # This test deliberately submits WRONG answers: refuse to run against anything but the local fake DRES.
-    import httpx
     url = httpx.get(f"{URL}/dres/status", timeout=10).json().get("url", "")
     if not url.startswith(("http://127.0.0.1", "http://localhost")):
         sys.exit(f"Refusing to run: backend is connected to {url or 'no DRES'}, not the local fake DRES. "
@@ -52,6 +60,10 @@ def main():
         page.goto(URL)
         expect(page.locator(".dres")).to_contain_text("Practice run", timeout=10000)
         check(True, "DRES indicator shows active evaluation")
+        expect(page.locator(".countdown")).to_have_text(re.compile(r"^\d+:\d\d$"), timeout=10000)
+        check(True, f"countdown shows time left ({page.locator('.countdown').inner_text()})")
+        page.click(".tasktype button:has-text('KIS')")
+        page.locator(".qform input").focus()
 
         # --- KIS: text search -> play -> loop -> wrong submission
         page.fill(".qform input", "a person balancing on a highline rope above a valley")
@@ -131,6 +143,14 @@ def main():
         expect(page.locator(".status")).to_contain_text("already submitted")
         check(True, "re-queueing a submitted shot is blocked")
         page.screenshot(path=str(OUT / "ui_avs.png"))
+
+        # --- the DRES task changes: the UI must reset itself and pick KIS/AVS from the task group
+        nxt = httpx.post(f"{url}/fake/next_task", timeout=10).json()
+        want = "AVS" if "Ad-hoc" in nxt["taskGroup"] else "KIS"
+        expect(page.locator(".status")).to_contain_text("New DRES task", timeout=8000)
+        expect(page.locator(".task-head")).to_contain_text(f"{want} task")
+        check(page.locator(".card").count() == 0 and page.locator(".qitem").count() == 0,
+              f"task change '{nxt['name']}' -> UI reset itself and switched to {want}")
 
         check(not errors, f"no page errors {errors}")
         browser.close()

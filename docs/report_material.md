@@ -38,7 +38,10 @@ Key points for the Methods section:
   - Filler and hallucinated segments are dropped: "Music", "...", "You", "Thank you".
   - BM25 (`bm25s`, Snowball English stemmer, English stop words) indexes each shot's own text twice plus its ±1 neighbours' text, because speech crosses shot cuts.
   - Per-video metadata is a second BM25 index whose score is added with weight 0.3.
-- **Fusion.** Reciprocal rank fusion (k = 60) of the top 1000 visual and top 1000 speech results.
+- **Fusion.** Weighted reciprocal rank fusion (k = 60) of the top 1000 visual and top 1000 speech results. The speech weight adapts to the query:
+  - Confidence is *c* = 1 − s₅₀/s₁, where s₁ and s₅₀ are the best and 50th-best BM25 scores. Spoken-word queries tend to have one standout match; visual descriptions match many shots weakly.
+  - The weight rises linearly from 1 at *c* ≤ 0.35 to 4 at *c* ≥ 0.65, and the visual ranking keeps weight 1.
+  - The thresholds came from a small study: 150 spoken-word queries had median *c* = 0.57, and 40 visual descriptions had median *c* = 0.34, with < 10 % above 0.5. Of 34 visual benchmark queries, 21 keep weight 1 exactly.
 - **Interaction.**
   - Keyboard-driven grid of 300 results with a group-by-video toggle.
   - Paste a screenshot (⌘V) for image search, plus "more like this" and Rocchio relevance feedback.
@@ -127,19 +130,23 @@ negligible compared with the time the operator spends inspecting results.
 | thumbnail itself (sanity) | 200 | 0.995 | 1.000 | 1.000 | 0.998 | 1.000 | 1.000 | 1.000 |
 | video frame (KIS-V proxy) | 200 | 0.635 | 0.875 | 0.960 | 0.723 | 0.915 | 0.940 | 0.980 |
 | transcript words, speech mode | 90 | 0.267 | 0.689 | 0.944 | 0.418 | 0.756 | 0.944 | 0.956 |
-| transcript words, fused mode | 90 | 0.067 | 0.578 | 0.900 | 0.225 | 0.689 | 0.422 | 0.933 |
+| transcript words, fused (adaptive weight, final) | 90 | 0.222 | 0.678 | 0.900 | 0.383 | 0.744 | 0.833 | 0.956 |
+| transcript words, fused (equal-weight RRF, initial) | 90 | 0.067 | 0.578 | 0.900 | 0.225 | 0.689 | 0.422 | 0.933 |
 
 Observations:
 - **Image search.** A screenshot-like frame finds the right video first 94% of the time and the exact shot in the top 10 in 87.5% of cases. Most misses are adjacent shots of the same scene (±1-shot R@10 = 0.915), which the player's shot strip makes easy to correct. Going from the 20-video development set to the full 1,000 videos lowered exact R@1 only from 0.69 to 0.635.
 - **Speech search** finds the right video at R@1 = 0.944. The exact shot is harder (R@1 = 0.267), because neighbouring shots share text through the ±1 window and long segments span several shots.
-- **Equal-weight RRF fusion hurts spoken-word queries** (video R@1 0.42 vs 0.94 for speech-only). The visual ranking is uninformative for such queries but carries the same weight. In the UI the operator therefore chooses Speech mode for quoted speech.
+- **Equal-weight RRF fusion hurt spoken-word queries** (video R@1 0.42 vs 0.94 for speech-only), because the visual ranking is uninformative for such queries but carried the same weight. With the adaptive speech weight, fused reaches video R@1 0.83 and exact R@10 0.68, close to speech-only (0.94 / 0.69). Image-query results are unaffected, since fusion is not used for image search.
 
 ## 4. Known limitations
 
 - **One embedding per shot.** We embed only the representative thumbnail. Long shots with changing content are only reachable through that one frame.
 - **Thumbnail resolution.** The 200 px thumbnails are upsampled to the model's 384 px input. Keyframes (128 GB) would give sharper embeddings but were not used.
 - **Multilingual speech.** Whisper transcripts are in the spoken language, not translated. English BM25 with an English stemmer cannot match English descriptions to non-English speech.
-- **Fusion.** RRF weights the visual and speech rankings equally. When a query is mostly spoken words, the visual ranking adds noise. The selftest shows fused is worse than speech-only for verbatim transcript queries, so the operator must pick the mode.
+  - A stop-word heuristic classifies 578 videos (58 %) as English, 241 (24 %) as non-English and 181 (18 %) as having little or no speech.
+  - Spot checks show part of the "non-English" group is Whisper hallucinating over music, so real non-English speech is roughly 15 % of videos.
+  - Only KIS-T tasks that refer to speech in such videos are affected. Visual search works regardless of language.
+- **Fusion.** The adaptive speech weight is a heuristic. It was tuned on verbatim transcript queries and synthetic visual descriptions, not on real task descriptions. Queries with rare words (e.g. "a bride and groom") also get a high speech weight even when they describe visuals. Fused is still slightly below Speech mode for quoted speech, and Visual mode remains available for purely visual descriptions.
 - **Temporal queries** assume B follows A within a fixed number of shots or seconds in the same video.
 - **Transcript noise.** Whisper hallucinations ("Music", "You", repeated tokens, transcripts running past the video end) are filtered heuristically.
 - **Selftest is a proxy.** It queries with the target's own frame or transcript words. Real KIS-V clips (projected, re-filmed) and human-written KIS-T descriptions are harder.

@@ -28,6 +28,14 @@ export type SubmitResult = {
   time?: string
 }
 
+// KIS for (Visual|Textual) Known Item Search, AVS for Ad-hoc Video Search; null if unrecognised
+export function inferTaskType(t: DresStatus['current_task']): TaskType | null {
+  const s = `${t?.taskGroup ?? ''} ${t?.taskType ?? ''} ${t?.name ?? ''}`.toLowerCase()
+  if (/ad-?hoc|\bavs\b/.test(s)) return 'AVS'
+  if (/known.?item|\bkis/.test(s)) return 'KIS'
+  return null
+}
+
 export type DresStatus = {
   configured: boolean
   url: string
@@ -35,6 +43,7 @@ export type DresStatus = {
   logged_in: boolean
   active?: { id: string; name: string }[]
   current_task?: { name: string; taskGroup: string; taskType: string; duration: number } | null
+  task?: { id: string; status: string; time_left_ms: number } | null
   error?: string
 }
 

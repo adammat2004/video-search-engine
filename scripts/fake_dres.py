@@ -8,6 +8,7 @@ The target is set with FAKE_TARGET="<mediaItemName>:<start_ms>-<end_ms>" (defaul
 A submission is CORRECT if the item matches and the submitted range overlaps the target range.
 """
 import os
+import time
 import uuid
 
 from fastapi import FastAPI, HTTPException
@@ -21,6 +22,11 @@ EVAL = {"id": "eval-1", "name": "Practice run", "type": "SYNCHRONOUS", "status":
         "templateId": "tpl-1", "templateDescription": "fake", "teams": ["team"],
         "taskTemplates": [{"name": "kis-1", "taskGroup": "KIS-V", "taskType": "KIS", "duration": 300}]}
 SUBMISSIONS: list[dict] = []
+# The running task; POST /fake/next_task advances through these (not a DRES route, for testing only).
+TASKS = [{"name": "kis-1", "taskGroup": "Visual Known Item Search", "taskType": "Visual Known Item Search", "duration": 300000},
+         {"name": "kis-t-1", "taskGroup": "Textual Known Item Search", "taskType": "Textual Known Item Search", "duration": 300000},
+         {"name": "avs-1", "taskGroup": "Ad-hoc Video Search", "taskType": "Ad-hoc Video Search", "duration": 300000}]
+RUN = {"idx": 0, "task_id": uuid.uuid4().hex, "started": time.time()}
 
 
 def target():
@@ -66,7 +72,22 @@ def evaluations(session: str = ""):
 @app.get("/api/v2/client/evaluation/currentTask/{evaluation_id}")
 def current_task(evaluation_id: str, session: str = ""):
     check(session)
-    return EVAL["taskTemplates"][0]
+    return TASKS[RUN["idx"]]
+
+
+@app.get("/api/v2/evaluation/{evaluation_id}/state")
+def state(evaluation_id: str, session: str = ""):
+    check(session)
+    left = max(0, TASKS[RUN["idx"]]["duration"] - int((time.time() - RUN["started"]) * 1000))
+    return {"evaluationId": evaluation_id, "evaluationStatus": "ACTIVE", "taskId": RUN["task_id"],
+            "taskStatus": "RUNNING" if left else "ENDED", "taskTemplateId": TASKS[RUN["idx"]]["name"],
+            "timeLeft": left, "timeElapsed": TASKS[RUN["idx"]]["duration"] - left}
+
+
+@app.post("/fake/next_task")
+def next_task():
+    RUN.update(idx=(RUN["idx"] + 1) % len(TASKS), task_id=uuid.uuid4().hex, started=time.time())
+    return TASKS[RUN["idx"]]
 
 
 def judge(item, start, end):

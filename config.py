@@ -34,5 +34,10 @@ META_WEIGHT = 0.3      # weight of per-video metadata BM25 relative to shot tran
 NEIGHBOUR_WINDOW = 1   # transcript of +-N neighbouring shots is added to each shot's text
 RRF_K = 60
 FUSION_DEPTH = 1000
+# Fused mode: weight of the speech ranking grows from 1x to SPEECH_WEIGHT_MAX as BM25 confidence
+# (1 - top50/top1 score) rises from SPEECH_CONF_LO to LO + SPAN. Tuned with a speech-vs-visual query study.
+SPEECH_CONF_LO = 0.35
+SPEECH_CONF_SPAN = 0.3
+SPEECH_WEIGHT_MAX = 4.0
 
 MIN_SHOT_MS = 40       # pad degenerate (zero-length) shots on submit

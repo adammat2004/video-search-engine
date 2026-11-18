@@ -5,6 +5,7 @@ v2 flow:
   POST /api/v2/login                          {username, password} -> ApiUser{sessionId}
   GET  /api/v2/client/evaluation/list?session  -> [ApiClientEvaluationInfo{id, name, status, ...}]
   GET  /api/v2/client/evaluation/currentTask/{evaluationId}?session -> ApiClientTaskTemplateInfo
+  GET  /api/v2/evaluation/{evaluationId}/state?session -> ApiEvaluationState{taskId, taskStatus, timeLeft (ms)}
   POST /api/v2/submit/{evaluationId}?session  ApiClientSubmission
        {"answerSets": [{"answers": [{"mediaItemName", "start", "end"}]}]}   (start/end in ms)
        -> 200/202 SuccessfulSubmissionsStatus{status, submission: CORRECT|WRONG|INDETERMINATE|UNDECIDABLE,
@@ -99,6 +100,11 @@ class DresClient:
 
     def current_task(self, evaluation_id: str) -> dict | None:
         r = self._request("GET", f"/api/v2/client/evaluation/currentTask/{evaluation_id}")
+        return r.json() if r.status_code == 200 else None
+
+    def state(self, evaluation_id: str) -> dict | None:
+        """Running task id, its status (CREATED/PREPARING/RUNNING/ENDED) and timeLeft in ms."""
+        r = self._request("GET", f"/api/v2/evaluation/{evaluation_id}/state")
         return r.json() if r.status_code == 200 else None
 
     def media_name(self, v3c_id: str) -> str:

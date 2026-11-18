@@ -49,6 +49,12 @@ input:focus { outline: none; border-color: var(--accent); }
 .dres.warn .dot { background: var(--warn); }
 .dres.bad .dot { background: var(--bad); }
 .dres.bad { cursor: pointer; }
+.countdown {
+  font-family: ui-monospace, Menlo, monospace; font-size: 16px; font-weight: 600; padding: 3px 8px;
+  border-radius: 4px; background: #0c0d10; border: 1px solid var(--line);
+}
+.countdown.low { color: #fff; background: var(--bad); border-color: var(--bad); }
+.countdown.off { color: var(--muted); font-size: 12px; font-weight: 400; }
 .status {
   padding: 3px 10px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line);
   display: flex; justify-content: space-between; gap: 10px; white-space: nowrap; overflow: hidden;

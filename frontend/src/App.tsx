@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   type Answer, type DresStatus, type Mode, type Shot, type SubmitResult, type TaskType, type VideoInfo,
-  api, fmtMs,
+  api, fmtMs, inferTaskType,
 } from './api'
 import { Grid } from './components/Grid'
 import { Player, type Range } from './components/Player'
@@ -16,6 +16,22 @@ const MODES: { id: Mode; label: string }[] = [
 ]
 type Results = { results: Shot[] }
 type Confirm = { answers: Answer[]; lines: string[]; warn?: string }
+
+// Time left in the running DRES task, ticking locally between 2 s status polls.
+function Countdown({ ms, at, ticking }: { ms: number; at: number; ticking: boolean }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 250)
+    return () => clearInterval(id)
+  }, [])
+  // only count down locally while the server's timer is moving (a paused task shows its frozen value)
+  const s = Math.ceil(Math.max(0, ms - (ticking ? Math.max(0, now - at) : 0)) / 1000)
+  return (
+    <span className={'countdown' + (s <= 60 ? ' low' : '')} title="Time left in the DRES task">
+      {Math.floor(s / 60)}:{String(s % 60).padStart(2, '0')}
+    </span>
+  )
+}
 
 export default function App() {
   // search
@@ -47,6 +63,9 @@ export default function App() {
   const [kisDone, setKisDone] = useState(false)
   const [log, setLog] = useState<SubmitResult[]>([])
   const [dres, setDres] = useState<DresStatus | null>(null)
+  const [dresAt, setDresAt] = useState(0)
+  const [ticking, setTicking] = useState(false)
+  const prevLeft = useRef<{ left: number; at: number } | null>(null)
   const [confirm, setConfirm] = useState<Confirm | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -197,10 +216,36 @@ export default function App() {
   }
 
   // ------------------------------------------------------------------ DRES status polling
+  // Follow the DRES task: when the running task changes, reset per-task state and set KIS/AVS.
+  const lastTaskId = useRef<string | null>(null)
+  const onDresStatus = (st: DresStatus) => {
+    const tid = st.task?.id ?? null
+    if (!tid || tid === lastTaskId.current) return
+    const prev = lastTaskId.current
+    lastTaskId.current = tid
+    const tt = inferTaskType(st.current_task)
+    if (tt) setTaskType(tt)
+    if (prev) {   // a different task than before (not just the first one we see): start fresh
+      newTask()
+      setStatus({ text: `New DRES task: ${st.current_task?.name ?? tid}${tt ? ` (${tt})` : ''}. Reset for the new task.` })
+    }
+  }
+  const dresRef = useRef(onDresStatus)
+  dresRef.current = onDresStatus
+
   useEffect(() => {
-    const poll = () => api.dresStatus().then(setDres).catch(() => setDres(null))
+    const poll = () => api.dresStatus()
+      .then((st) => {
+        // the server timer is running if it dropped by at least half the real time since the last poll
+        // (a paused task's timeLeft drifts by only ~1 ms/s)
+        const left = st.task?.time_left_ms ?? null, at = Date.now(), prev = prevLeft.current
+        setTicking(left !== null && prev !== null && prev.left - left >= 0.5 * (at - prev.at))
+        prevLeft.current = left === null ? null : { left, at }
+        setDres(st); setDresAt(at); dresRef.current(st)
+      })
+      .catch(() => setDres(null))
     poll(); refreshLog()
-    const id = setInterval(poll, 5000)
+    const id = setInterval(poll, 2000)
     return () => clearInterval(id)
   }, [])
 
@@ -315,6 +360,9 @@ export default function App() {
              title={dres?.error ?? dres?.url}>
           <span className="dot" />{dresText}
         </div>
+        {dres?.task && (dres.task.status === 'RUNNING'
+          ? <Countdown ms={dres.task.time_left_ms} at={dresAt} ticking={ticking} />
+          : <span className="countdown off" title="DRES task status">{dres.task.status.toLowerCase()}</span>)}
       </header>
       <div className={'status' + (status.err ? ' err' : '')}>
         {status.text}

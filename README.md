@@ -47,4 +47,16 @@ Practice without the course server: `.venv/bin/uvicorn scripts.fake_dres:app --p
 ## Tests
 
     .venv/bin/pytest -q                       # backend + DRES client (needs the index)
-    .venv/bin/python scripts/ui_e2e.py        # UI end-to-end in Chrome (needs backend, fake DRES, vite)
+    # UI end-to-end in Chrome. It submits WRONG answers on purpose, so it only runs against the fake DRES;
+    # use a separate test stack so the real backend can stay on the course server:
+    .venv/bin/uvicorn scripts.fake_dres:app --port 8081 &
+    DRES_URL=http://127.0.0.1:8081 DRES_USER=team DRES_PASS=secret VBS_SUBMIT_LOG=logs/submissions_test.jsonl \
+        .venv/bin/uvicorn backend.app:app --port 8001 &
+    (cd frontend && VBS_BACKEND=http://127.0.0.1:8001 npx vite --port 5174 &)
+    VBS_UI_URL=http://localhost:5174 .venv/bin/python scripts/ui_e2e.py
+
+## During an evaluation
+
+The UI follows the DRES task by itself: when a new task starts it clears the results and queue and
+selects KIS or AVS from the task's group. The countdown next to the DRES status shows the time left
+(red in the last minute). `⇧N` still resets by hand if needed.
