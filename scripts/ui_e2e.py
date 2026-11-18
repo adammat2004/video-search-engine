@@ -37,6 +37,12 @@ check.failed = False
 
 def main():
     headed = "--headed" in sys.argv
+    # This test deliberately submits WRONG answers: refuse to run against anything but the local fake DRES.
+    import httpx
+    url = httpx.get(f"{URL}/dres/status", timeout=10).json().get("url", "")
+    if not url.startswith(("http://127.0.0.1", "http://localhost")):
+        sys.exit(f"Refusing to run: backend is connected to {url or 'no DRES'}, not the local fake DRES. "
+                 "Point .env at http://127.0.0.1:8081 (scripts/fake_dres.py) and restart the backend.")
     with sync_playwright() as p:
         browser = p.chromium.launch(channel="chrome", headless=not headed,
                                     args=["--autoplay-policy=no-user-gesture-required"])

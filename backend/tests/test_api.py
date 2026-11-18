@@ -5,15 +5,20 @@ Needs the index built by indexer/run_all.sh. Loads the SigLIP model once (~15 s)
 """
 import io
 import json
+import os
 
-import pytest
-from fastapi.testclient import TestClient
-from PIL import Image
+# Never touch the real DRES from tests: load_dotenv() does not override variables that are already set.
+os.environ["DRES_URL"] = ""
+os.environ["DRES_USER"] = ""
 
-from backend import app as appmod
-from backend.dres import DresClient, DresError
-from backend.engine import config
-from scripts import fake_dres
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from PIL import Image  # noqa: E402
+
+from backend import app as appmod  # noqa: E402
+from backend.dres import DresClient, DresError  # noqa: E402
+from backend.engine import config  # noqa: E402
+from scripts import fake_dres  # noqa: E402
 
 
 @pytest.fixture(scope="module")
