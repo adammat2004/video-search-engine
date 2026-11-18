@@ -68,8 +68,26 @@ export default function App() {
     }
   }, [group])
 
+  // "00031", "00031 1", "00031#1" or "shot00031_1": jump straight to a video (and shot) by id
+  const jumpTo = async (v3c: string, n: number | null) => {
+    try {
+      const v = await api.videoShots(v3c)
+      lastSearch.current = null
+      setResults(v.shots)
+      setInfo(v)
+      const i = n ? v.shots.findIndex((s) => s.n === n) : -1
+      setCursor(Math.max(0, i))
+      if (i >= 0) open(v.shots[i])
+      setStatus({ text: `video ${v3c} (${v.title}): ${v.shots.length} shots` + (n && i < 0 ? ` (no shot ${n})` : '') })
+    } catch (e) {
+      setStatus({ text: `video ${v3c}: ${(e as Error).message}`, err: true })
+    }
+  }
+
   const search = () => {
     if (!q.trim()) return
+    const id = q.trim().match(/^(?:shot)?(\d{5})(?:[\s_#]+(\d+))?$/i)
+    if (id && mode !== 'temporal') { jumpTo(id[1], id[2] ? Number(id[2]) : null); return }
     if (mode === 'temporal') {
       if (!qb.trim()) { setStatus({ text: 'Temporal search needs both A and B', err: true }); return }
       const secs = maxSeconds ? Number(maxSeconds) : null
@@ -272,7 +290,7 @@ export default function App() {
         </div>
         <form className="qform" onSubmit={(e) => { e.preventDefault(); search() }}>
           <input ref={queryRef} value={q} onChange={(e) => setQ(e.target.value)} autoFocus
-                 placeholder={mode === 'temporal' ? 'A: first shot…' : mode === 'speech' ? 'spoken words, title, tags…' : 'describe the shot…  (/ to focus)'} />
+                 placeholder={mode === 'temporal' ? 'A: first shot…' : mode === 'speech' ? 'spoken words, title, tags…' : 'describe the shot, or a video id like 00031 1  (/ to focus)'} />
           {mode === 'temporal' && (
             <>
               <input value={qb} onChange={(e) => setQb(e.target.value)} placeholder="B: followed by…" />

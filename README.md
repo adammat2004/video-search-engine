@@ -33,6 +33,7 @@ Practice without the course server: `.venv/bin/uvicorn scripts.fake_dres:app --p
 | Key | Action |
 |---|---|
 | `/` | focus query (Enter searches, Esc leaves the box) |
+| `00031` / `00031 1` | jump to a video by id (all its shots) / straight to shot 1 in the player |
 | `1`–`4` | Visual / Speech / Fused / Temporal A→B |
 | ⌘V | search by pasted screenshot (⌘⌃⇧4 copies a screen region) |
 | arrows | move selection · `Space` play selected · `M` more like this |
